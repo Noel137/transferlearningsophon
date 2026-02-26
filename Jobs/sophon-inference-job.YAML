@@ -1,0 +1,49 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: sophon-inference-job
+spec:
+  backoffLimit: 1
+  template:
+    spec:
+      containers:
+      - name: sophon-runner
+        image: gitlab-registry.nrp-nautilus.io/escheuller/transfer-learning:cu121
+        command: ["/bin/bash", "-c"]
+        args:
+          - |
+            echo "Cloning the repository..."
+            git clone https://github.com/sophon-ucsd/transferlearningsophon.git
+            cd transferlearningsophon
+            
+            echo "Installing missing dependencies..."
+            pip install uproot awkward numpy tqdm
+            
+            echo "Linking JetClass dataset..."
+            mkdir -p data/JetClass
+            ln -s /workspace/data/jetclass2 data/JetClass/val_5M
+            
+            echo "Starting inference..."
+            python inference_all_classes.py
+            
+            echo "Saving results to Persistent Volume..."
+            cp *.csv /workspace/data/
+            echo "Inference and data backup complete!"
+            
+        volumeMounts:
+        - name: data-volume
+          mountPath: /workspace/data
+        resources:
+          limits:
+            memory: "16Gi"
+            cpu: "4"
+            nvidia.com/gpu: "1" 
+          requests:
+            memory: "8Gi"
+            cpu: "2"
+            nvidia.com/gpu: "1"
+      restartPolicy: Never
+      volumes:
+      - name: data-volume
+        persistentVolumeClaim:
+          claimName: transfer-learning-vol
